@@ -90,15 +90,6 @@
       text-overflow: ellipsis;
     }
 
-    .brand-meta {
-      font-size: 0.78rem;
-      color: #cbd5e1;
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      font-weight: 600;
-    }
-
     .cart-btn {
       background: linear-gradient(135deg, var(--accent) 0%, #dfb558 100%);
       color: var(--primary);
@@ -134,7 +125,7 @@
       font-weight: 800;
     }
 
-    /* قسم الغلاف المتجاوب تماماً مع الموبايل والشاشات */
+    /* قسم الغلاف المتجاوب تماماً مع الشاشات والموبايل */
     .cover-section {
       background: linear-gradient(180deg, #0b1320 0%, #17253d 100%);
       padding: 15px 12px 45px 12px;
@@ -161,9 +152,9 @@
 
     .cover-image-box img {
       width: 100%;
-      max-height: 420px;
+      max-height: 400px;
       height: auto;
-      object-fit: cover;
+      object-fit: contain;
       display: block;
     }
 
@@ -682,25 +673,19 @@
     /* تحسينات للشاشات الصغيرة جداً */
     @media (max-width: 480px) {
       .brand-info h1 { font-size: 1.1rem; }
-      .brand-meta { font-size: 0.72rem; }
-      .cover-text-bar h2 { font-size: 1.2rem; }
-      .cover-text-bar p { font-size: 0.82rem; }
       .image-frame { height: 230px; }
     }
   </style>
 </head>
 <body>
 
+  <!-- الهيدر العلوي (بدون العنوان ورقم التليفون) -->
   <header>
     <div class="header-container">
       <div class="logo-area">
         <img src="" id="storeLogo" alt="شعار المعرض" class="logo-img" />
         <div class="brand-info">
           <h1 id="storeTitle">معرض أبو سمرة كاربت</h1>
-          <div class="brand-meta">
-            <span id="storeAddressText">قويسنا - المنوفية</span>
-            <span id="storePhoneHeader"></span>
-          </div>
         </div>
       </div>
       <button class="cart-btn" onclick="toggleCart(true)">
@@ -863,12 +848,10 @@
       }
 
       if (settings.store_address) {
-        document.getElementById("storeAddressText").textContent = settings.store_address;
         document.getElementById("footerAddress").textContent = `📍 العنوان: ${settings.store_address}`;
       }
 
       if (settings.store_phone) {
-        document.getElementById("storePhoneHeader").textContent = `| 📞 ${settings.store_phone}`;
         document.getElementById("footerPhone").textContent = `📞 للاستفسار: ${settings.store_phone}`;
       }
 
@@ -1118,7 +1101,7 @@
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
               <button type="button" class="q-btn" onclick="changeQty(${idx}, -1)">-</button>
-              <span>${item.qty}</span>
+              <span style="font-weight: 800; min-width: 20px; text-align: center;">${item.qty}</span>
               <button type="button" class="q-btn" onclick="changeQty(${idx}, 1)">+</button>
             </div>
           </div>
@@ -1139,7 +1122,9 @@
     }
 
     function closeCartOnOverlay(e) {
-      if (e.target.id === "cartModal") toggleCart(false);
+      if (e.target.id === "cartModal") {
+        toggleCart(false);
+      }
     }
 
     async function submitOrder(e) {
@@ -1148,61 +1133,84 @@
 
       const btn = document.getElementById("submitOrderBtn");
       btn.disabled = true;
-      btn.textContent = "جاري تسجيل الطلب...";
+      btn.textContent = "جاري تسجيل الطلب وإرساله...";
 
-      const customer_name = document.getElementById("custName").value.trim();
-      const phone = document.getElementById("custPhone").value.trim();
-      const address = document.getElementById("custAddress").value.trim();
-      const payment_method = document.getElementById("paymentMethod").value;
-      const notes = document.getElementById("custNotes").value.trim();
-      const total = cart.reduce((sum, item) => sum + item.subtotal, 0);
+      const custName = document.getElementById("custName").value.trim();
+      const custPhone = document.getElementById("custPhone").value.trim();
+      const custAddress = document.getElementById("custAddress").value.trim();
+      const paymentMethod = document.getElementById("paymentMethod").value;
+      const custNotes = document.getElementById("custNotes").value.trim();
+      const totalAmount = cart.reduce((sum, item) => sum + item.subtotal, 0);
 
-      const payload = { customer_name, phone, address, payment_method, notes, items: cart, total };
+      const orderData = {
+        action: "create_order",
+        customer_name: custName,
+        phone: custPhone,
+        address: custAddress,
+        payment_method: paymentMethod,
+        notes: custNotes,
+        total: totalAmount,
+        items: cart
+      };
 
       try {
-        const response = await fetch(API_URL, { method: "POST", body: JSON.stringify(payload) });
-        const result = await response.json();
-        const orderId = result.order_id || "جديد";
+        const res = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(orderData)
+        });
+        const result = await res.json();
 
-        const itemsLines = cart.map(i => `• ${i.name} (مقاس: ${i.size}) × ${i.qty} = ${i.subtotal} ج.م`).join("\n");
-        const waNumber = (storeSettings.whatsapp_number || "201229295567").replace(/\D/g, "");
-        const storeName = storeSettings.store_name || "معرض أبو سمرة كاربت";
+        if (result.status === "success" || result.order_id) {
+          const orderId = result.order_id || "جديد";
+          const storeName = storeSettings.store_name || "معرض أبو سمرة كاربت";
+          const whatsappNumber = (storeSettings.whatsapp_number || "201229295567").replace(/\D/g, "");
 
-        const waText = `السلام عليكم، طلب جديد من متجر *${storeName}*:\n` +
-          `*رقم الطلب:* ${orderId}\n` +
-          `*الاسم:* ${customer_name}\n` +
-          `*الهاتف:* ${phone}\n` +
-          `*العنوان:* ${address}\n` +
-          `*طريقة الدفع:* ${payment_method}\n` +
-          (notes ? `*ملاحظات:* ${notes}\n` : "") +
-          `------------------\n` +
-          `*الطلبات:*\n${itemsLines}\n` +
-          `------------------\n` +
-          `*الإجمالي:* ${total} ج.م`;
+          let itemsText = cart.map(item => `• ${item.name} (${item.size}) × ${item.qty} = ${item.subtotal} ج.م`).join("\n");
+          
+          let whatsappMessage = `🛍️ *طلب جديد عبر متجر ${storeName}*\n\n` +
+            `🆔 *رقم الطلب:* #${orderId}\n` +
+            `👤 *الاسم:* ${custName}\n` +
+            `📞 *الهاتف:* ${custPhone}\n` +
+            `📍 *العنوان:* ${custAddress}\n` +
+            `💳 *طريقة الدفع:* ${paymentMethod}\n` +
+            (custNotes ? `📝 *ملاحظات:* ${custNotes}\n` : "") +
+            `\n--- *تفاصيل المنتجات* ---\n${itemsText}\n\n` +
+            `💰 *الإجمالي الكلي:* *${totalAmount} ج.م*`;
 
-        cart = [];
-        saveCart();
-        toggleCart(false);
-        initStore();
+          cart = [];
+          saveCart();
+          toggleCart(false);
+          showToast("تم إرسال الطلب بنجاح! جاري تحويلك للواتساب...");
 
-        window.open(`https://wa.me/${waNumber}?text=${encodeURIComponent(waText)}`, "_blank");
+          setTimeout(() => {
+            window.open(`https://wa.me/${whatsappNumber}?text=${encodeURIComponent(whatsappMessage)}`, "_blank");
+          }, 1000);
+
+        } else {
+          alert("حدث خطأ أثناء تسجيل الطلب: " + (result.message || "يرجى المحاولة مرة أخرى"));
+        }
       } catch (err) {
-        alert("حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مرة أخرى.");
+        alert("تعذر الاتصال بالخادم لتسجيل الطلب. يرجى التحقق من اتصال الإنترنت.");
       } finally {
         btn.disabled = false;
         btn.textContent = "تأكيد الطلب وإرساله واتساب";
       }
     }
 
-    function showToast(msg) {
+    function showToast(message) {
       const toast = document.getElementById("toastMsg");
-      toast.textContent = msg;
+      toast.textContent = message;
       toast.style.display = "block";
-      setTimeout(() => { toast.style.display = "none"; }, 2500);
+      setTimeout(() => {
+        toast.style.display = "none";
+      }, 3000);
     }
 
-    updateCartUI();
-    initStore();
+    window.addEventListener("DOMContentLoaded", () => {
+      updateCartUI();
+      initStore();
+    });
   </script>
 </body>
 </html>
