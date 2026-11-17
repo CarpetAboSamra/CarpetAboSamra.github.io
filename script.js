@@ -1,0 +1,282 @@
+const API_URL = "https://script.google.com/macros/s/AKfycbzo9cyGF9knLJ71hpKRcGY9XRmBijDbxY7ZuiQZGhNLaNnBaUvj-_cH-gCKdhXClbxzCA/exec";
+let storeSettings = {};
+let allProducts = [];
+let selectedCategory = "ALL";
+let cart = JSON.parse(localStorage.getItem("abusamra_cart_v2") || "[]");
+
+function getPriceDetails(product, sizeIdx) {
+  const regularPrice = (product.prices && product.prices[sizeIdx] !== undefined)
+    ? Number(product.prices[sizeIdx])
+    : Number((product.prices && product.prices[0]) || 0);
+
+  let discPrice = null;
+  if (product.discount_prices && product.discount_prices[sizeIdx] !== undefined && product.discount_prices[sizeIdx] !== null) {
+    const parsed = Number(product.discount_prices[sizeIdx]);
+    if (parsed > 0 && parsed < regularPrice) discPrice = parsed;
+  }
+
+  return {
+    finalPrice: discPrice !== null ? discPrice : regularPrice,
+    oldPrice: discPrice !== null ? regularPrice : null,
+    hasDiscount: discPrice !== null
+  };
+}
+
+function productHasAnyDiscount(product) {
+  if (!product.sizes || !product.sizes.length) return getPriceDetails(product, 0).hasDiscount;
+  return product.sizes.some((_, idx) => getPriceDetails(product, idx).hasDiscount);
+}
+
+async function initStore() {
+  try {
+    const res = await fetch(API_URL);
+    const data = await res.json();
+    if (data.status === "success") {
+      storeSettings = data.settings || {};
+      allProducts = data.products || [];
+      applySettings(storeSettings);
+      populateFilters(allProducts);
+      applyFilters();
+      updateCartUI();
+    }
+  } catch (err) {
+    console.error(err);
+    document.getElementById("productsGrid").innerHTML = `<div class="empty-msg">تعذر تحميل المنتجات، تأكد من رابط السكريبت.</div>`;
+  }
+}
+
+function applySettings(settings) {
+  const name = settings.store_name || "معرض أبو سمرة كاربت";
+  document.title = name;
+  document.getElementById("storeTitle").textContent = name;
+  if (settings.logo_image) {
+    const logo = document.getElementById("storeLogo");
+    logo.src = settings.logo_image;
+    logo.style.display = "block";
+  }
+  if (settings.store_address) document.getElementById("footerAddress").textContent = `📍 العنوان: ${settings.store_address}`;
+  if (settings.store_phone) document.getElementById("footerPhone").textContent = `📞 للاستفسار: ${settings.store_phone}`;
+  if (settings.cover_image) {
+    const cover = document.getElementById("coverImage");
+    cover.src = settings.cover_image;
+    cover.style.display = "block";
+  }
+}
+
+function populateFilters(products) {
+  const categories = new Set();
+  const sizes = new Set();
+  let hasAnyPromo = false;
+
+  products.forEach(p => {
+    if (p.category) categories.add(p.category);
+    if (Array.isArray(p.sizes)) p.sizes.forEach(s => sizes.add(s));
+    if (productHasAnyDiscount(p)) hasAnyPromo = true;
+  });
+
+  const sizeFilter = document.getElementById("sizeFilter");
+  sizeFilter.innerHTML = `<option value="ALL">جميع المقاسات</option>`;
+  sizes.forEach(s => {
+    const opt = document.createElement("option");
+    opt.value = s;
+    opt.textContent = `${s} سم`;
+    sizeFilter.appendChild(opt);
+  });
+
+  const catBar = document.getElementById("categoriesBar");
+  catBar.innerHTML = `<button class="cat-pill active" onclick="selectCategory('ALL', this)">الكل</button>`;
+
+  if (hasAnyPromo) {
+    const promoBtn = document.createElement("button");
+    promoBtn.className = "cat-pill promo-pill";
+    promoBtn.textContent = "🔥 العروض والخصومات";
+    promoBtn.onclick = () => selectCategory("DISCOUNTS", promoBtn);
+    catBar.appendChild(promoBtn);
+  }
+
+  categories.forEach(cat => {
+    const btn = document.createElement("button");
+    btn.className = "cat-pill";
+    btn.textContent = cat;
+    btn.onclick = () => selectCategory(cat, btn);
+    catBar.appendChild(btn);
+  });
+}
+
+function selectCategory(cat, btnElement) {
+  selectedCategory = cat;
+  document.querySelectorAll(".cat-pill").forEach(b => b.classList.remove("active"));
+  btnElement.classList.add("active");
+  applyFilters();
+}
+
+function applyFilters() {
+  const searchText = document.getElementById("searchInput").value.trim().toLowerCase();
+  const selectedSize = document.getElementById("sizeFilter").value;
+
+  const filtered = allProducts.filter(p => {
+    const matchCat = selectedCategory === "ALL" 
+      || (selectedCategory === "DISCOUNTS" && productHasAnyDiscount(p))
+      || p.category === selectedCategory;
+    const matchSize = selectedSize === "ALL" || (Array.isArray(p.sizes) && p.sizes.includes(selectedSize));
+    const matchText = !searchText || (p.name && p.name.toLowerCase().includes(searchText));
+    return matchCat && matchSize && matchText;
+  });
+
+  renderProducts(filtered);
+}
+
+function renderProducts(products) {
+  const grid = document.getElementById("productsGrid");
+  if (!products.length) {
+    grid.innerHTML = `<div class="empty-msg">لا توجد منتجات مطابقة.</div>`;
+    return;
+  }
+
+  grid.innerHTML = products.map(p => {
+    const hasAnyDisc = productHasAnyDiscount(p);
+    const sizesOptions = (p.sizes && p.sizes.length)
+      ? p.sizes.map((s, sIdx) => `<option value="${sIdx}">${s} سم</option>`).join("")
+      : `<option value="0">مقاس موحد</option>`;
+
+    const initialInfo = getPriceDetails(p, 0);
+
+    return `
+      <div class="product-card" id="card-${p.id}">
+        <div class="image-frame">
+          <span class="badge-cat">${p.category || "عام"}</span>
+          ${hasAnyDisc ? `<span class="badge-discount">خصم 🔥</span>` : ""}
+          <img src="${p.image || ''}" alt="${p.name}" loading="lazy" />
+        </div>
+        <div class="card-content">
+          <h3>${p.name}</h3>
+          <select class="size-select" id="size-select-${p.id}" onchange="updateCardPrice('${p.id}')">
+            ${sizesOptions}
+          </select>
+          <div class="price-wrap">
+            <div>
+              <span class="current-price" id="curr-price-${p.id}">${initialInfo.finalPrice} ج.م</span>
+              <span class="old-price" id="old-price-${p.id}" style="${!initialInfo.oldPrice ? 'display:none' : ''}">${initialInfo.oldPrice || ''} ج.م</span>
+            </div>
+          </div>
+          <button class="add-to-cart-btn" onclick="addProductToCart('${p.id}')">🛒 إضافة للسلة</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function updateCardPrice(productId) {
+  const product = allProducts.find(p => String(p.id) === String(productId));
+  if (!product) return;
+  const sIdx = Number(document.getElementById(`size-select-${productId}`).value);
+  const info = getPriceDetails(product, sIdx);
+  document.getElementById(`curr-price-${productId}`).textContent = `${info.finalPrice} ج.م`;
+  const oldElem = document.getElementById(`old-price-${productId}`);
+  if (info.oldPrice) {
+    oldElem.textContent = `${info.oldPrice} ج.م`;
+    oldElem.style.display = "inline";
+  } else {
+    oldElem.style.display = "none";
+  }
+}
+
+function addProductToCart(productId) {
+  const product = allProducts.find(p => String(p.id) === String(productId));
+  if (!product) return;
+  const sIdx = Number(document.getElementById(`size-select-${productId}`).value);
+  const chosenSize = (product.sizes && product.sizes[sIdx]) ? product.sizes[sIdx] : "قياسي";
+  const info = getPriceDetails(product, sIdx);
+  const cartKey = `${product.id}_${chosenSize}`;
+  const existing = cart.find(item => item.cartKey === cartKey);
+
+  if (existing) {
+    existing.qty += 1;
+  } else {
+    cart.push({
+      cartKey, id: product.id, name: product.name, size: chosenSize, price: info.finalPrice, image: product.image, qty: 1
+    });
+  }
+  saveAndSyncCart();
+  showToast(`تمت إضافة ${product.name} للسلة!`);
+}
+
+function saveAndSyncCart() {
+  localStorage.setItem("abusamra_cart_v2", JSON.stringify(cart));
+  updateCartUI();
+}
+
+function updateCartUI() {
+  document.getElementById("cartCount").textContent = cart.reduce((sum, item) => sum + item.qty, 0);
+  const container = document.getElementById("cartItemsContainer");
+  if (!cart.length) {
+    container.innerHTML = `<div style="text-align:center; padding:40px;">السلة فارغة.</div>`;
+    document.getElementById("cartTotal").textContent = "0 ج.م";
+    return;
+  }
+  container.innerHTML = cart.map(item => `
+    <div class="cart-row">
+      <div>
+        <h5>${item.name}</h5>
+        <p>مقاس: ${item.size} | ${item.price} ج.م</p>
+      </div>
+      <div style="display:flex; align-items:center; gap:6px;">
+        <button class="q-btn" onclick="changeQty('${item.cartKey}', -1)">-</button>
+        <span>${item.qty}</span>
+        <button class="q-btn" onclick="changeQty('${item.cartKey}', 1)">+</button>
+      </div>
+    </div>
+  `).join("");
+  const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+  document.getElementById("cartTotal").textContent = `${total} ج.م`;
+}
+
+function changeQty(cartKey, delta) {
+  const item = cart.find(i => i.cartKey === cartKey);
+  if (!item) return;
+  item.qty += delta;
+  if (item.qty <= 0) cart = cart.filter(i => i.cartKey !== cartKey);
+  saveAndSyncCart();
+}
+
+function toggleCart(open) {
+  document.getElementById("cartModal").classList.toggle("open", open);
+}
+
+function closeCartOnOverlay(e) {
+  if (e.target === e.currentTarget) toggleCart(false);
+}
+
+function showToast(msg) {
+  const toast = document.getElementById("toastMsg");
+  toast.textContent = msg;
+  toast.style.display = "block";
+  setTimeout(() => toast.style.display = "none", 3000);
+}
+
+async function submitOrder(e) {
+  e.preventDefault();
+  if (!cart.length) return;
+  const name = document.getElementById("custName").value;
+  const phone = document.getElementById("custPhone").value;
+  const address = document.getElementById("custAddress").value;
+  const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+
+  const payload = {
+    customer_name: name, phone, address, total,
+    items: cart.map(i => ({ id: i.id, name: i.name, size: i.size, qty: i.qty, price: i.price, subtotal: i.price * i.qty }))
+  };
+
+  try {
+    const res = await fetch(API_URL, { method: "POST", body: JSON.stringify(payload) });
+    const result = await res.json();
+    if (result.status === "success") {
+      cart = [];
+      saveAndSyncCart();
+      toggleCart(false);
+      showToast("تم إرسال الطلب بنجاح!");
+    }
+  } catch (err) {
+    alert("خطأ في الاتصال.");
+  }
+}

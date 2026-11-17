@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>لوحة التحكم - معرض أبو سمرة كاربت</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #1e293b;
+      --accent: #b45309;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; font-family: 'Cairo', sans-serif; }
+    body { background: var(--bg); margin: 0; padding: 20px; color: #0f172a; }
+    .container { max-width: 750px; margin: 0 auto; }
+    
+    /* شاشة الدخول */
+    .login-box {
+      max-width: 400px; margin: 80px auto; background: var(--card);
+      padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+      text-align: center;
+    }
+    .login-box h2 { margin-top: 0; color: var(--primary); }
+
+    /* لوحة الإدارة */
+    .admin-panel { display: none; }
+    .header {
+      display: flex; justify-content: space-between; align-items: center;
+      background: var(--primary); color: white; padding: 15px 25px;
+      border-radius: 12px; margin-bottom: 20px;
+    }
+    .header h1 { margin: 0; font-size: 1.3rem; }
+    .back-btn {
+      background: rgba(255,255,255,0.15); color: white; text-decoration: none;
+      padding: 6px 14px; border-radius: 8px; font-size: 0.9rem; font-weight: 600;
+    }
+
+    .card {
+      background: var(--card); padding: 25px; border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px;
+    }
+    .card h3 { margin-top: 0; border-bottom: 2px solid var(--border); padding-bottom: 10px; }
+
+    .form-group { margin-bottom: 15px; }
+    label { display: block; font-weight: 700; margin-bottom: 6px; font-size: 0.95rem; }
+    .hint { font-size: 0.8rem; color: #64748b; display: block; margin-top: 3px; }
+    input, select, textarea {
+      width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 1rem; background: #fff;
+    }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    @media (max-width: 600px) { .row-2 { grid-template-columns: 1fr; } }
+
+    .upload-area {
+      border: 2px dashed #cbd5e1; padding: 20px; text-align: center;
+      border-radius: 10px; background: #f1f5f9; cursor: pointer;
+    }
+    .preview-img {
+      max-width: 180px; max-height: 180px; margin-top: 12px;
+      border-radius: 8px; display: none; border: 1px solid var(--border);
+    }
+
+    .btn {
+      background: var(--accent); color: white; border: none; padding: 12px 20px;
+      border-radius: 8px; font-size: 1rem; font-weight: 700; cursor: pointer; width: 100%;
+    }
+    .btn:disabled { background: #94a3b8; cursor: not-allowed; }
+    
+    .status-msg {
+      margin-top: 12px; padding: 10px; border-radius: 8px;
+      text-align: center; font-weight: 600; display: none;
+    }
+    .success { background: #dcfce7; color: #166534; }
+    .error { background: #fee2e2; color: #991b1b; }
+    .loading { background: #fef3c7; color: #92400e; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- شاشة تسجيل الدخول -->
+  <div class="login-box" id="loginScreen">
+    <h2>🔒 دخول الإدارة</h2>
+    <p style="color:#64748b; font-size:0.9rem;">معرض أبو سمرة كاربت</p>
+    <div class="form-group">
+      <input type="password" id="adminPass" placeholder="أدخل كلمة المرور..." onkeypress="if(event.key==='Enter') checkLogin()" />
+    </div>
+    <button class="btn" onclick="checkLogin()">دخول</button>
+    <div id="loginError" class="status-msg error">كلمة المرور غير صحيحة!</div>
+  </div>
+
+  <!-- لوحة إضافة المنتجات -->
+  <div class="admin-panel" id="adminPanel">
+    <div class="header">
+      <h1>⚙️ إدارة معرض أبو سمرة كاربت</h1>
+      <a href="index.html" class="back-btn">العودة للمتجر ↗</a>
+    </div>
+
+    <div class="card">
+      <h3>➕ إضافة منتج جديد</h3>
+      <form id="productForm" onsubmit="saveProduct(event)">
+        <div class="row-2">
+          <div class="form-group">
+            <label>كود المنتج (ID) - اختياري</label>
+            <input type="text" id="prodId" placeholder="مثال: BSO1 (تلقائي لو فارغ)" />
+          </div>
+          <div class="form-group">
+            <label>القسم / التصنيف *</label>
+            <select id="prodCategory" required>
+              <option value="" disabled selected>جاري تحميل الأقسام من الشيت...</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>اسم السجادة / المنتج *</label>
+          <input type="text" id="prodName" required placeholder="مثال: سجادة مودرن هندسي رمادي وذهبي" />
+        </div>
+
+        <div class="form-group">
+          <label>المقاسات المتاحة *</label>
+          <input type="text" id="prodSizes" required placeholder="مثال: 160x220, 200x280" />
+          <span class="hint">افصل بين كل مقاس والتاني بفاصلة ( , )</span>
+        </div>
+
+        <div class="row-2">
+          <div class="form-group">
+            <label>الأسعار قبل الخصم (ج.م) *</label>
+            <input type="text" id="prodPrices" required placeholder="مثال: 780, 1250" />
+            <span class="hint">بنفس ترتيب المقاسات</span>
+          </div>
+          <div class="form-group">
+            <label>أسعار الخصم (اختياري)</label>
+            <input type="text" id="prodDiscountPrices" placeholder="مثال: 690, 1100" />
+            <span class="hint">اتركه فارغاً لو مفيش خصم</span>
+          </div>
+        </div>
+
+        <div class="row-2">
+          <div class="form-group">
+            <label>الكمية في المخزن (Stock)</label>
+            <input type="number" id="prodStock" value="4" min="0" />
+          </div>
+          <div class="form-group">
+            <label>حالة الظهور في المتجر</label>
+            <select id="prodActive">
+              <option value="TRUE" selected>مفعل (TRUE)</option>
+              <option value="FALSE">مخفي (FALSE)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>صورة المنتج (رفع مباشر) *</label>
+          <div class="upload-area" onclick="document.getElementById('imageFile').click()">
+            <span>📸 اضغط هنا لاختيار صورة السجادة من جهازك</span>
+            <input type="file" id="imageFile" accept="image/*" style="display:none" onchange="handleImageUpload(event)" />
+          </div>
+          <center><img id="imgPreview" class="preview-img" /></center>
+          <input type="hidden" id="prodImageUrl" required />
+          <div id="uploadStatus" class="status-msg"></div>
+        </div>
+
+        <div class="form-group">
+          <label>وصف إضافي (اختياري)</label>
+          <textarea id="prodDesc" rows="2" placeholder="مثال: خامة بولي بروبلين ناعمة، ارتفاع الوبرة 12 مم"></textarea>
+        </div>
+
+        <button type="submit" class="btn" id="saveBtn">حفظ ونشر المنتج في المتجر</button>
+        <div id="formStatus" class="status-msg"></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ================= إعدادات الربط =================
+  const ADMIN_PASSWORD = "1981";
+  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzo9cyGF9knLJ71hpKRcGY9XRmBijDbxY7ZuiQZGhNLaNnBaUvj-_cH-gCKdhXClbxzCA/exec";
+  
+  const CLOUDINARY_CLOUD_NAME = "fkdgtpw9";
+  const CLOUDINARY_UPLOAD_PRESET = "store_images";
+  // =================================================
+
+  // دالة لجلب الأقسام من العمود F في شيت Settings أوتوماتيكياً
+  async function loadCategories() {
+    const categorySelect = document.getElementById('prodCategory');
+    try {
+      const response = await fetch(GOOGLE_SCRIPT_URL);
+      const data = await response.json();
+      
+      if (data.status === "success" && data.categories && data.categories.length > 0) {
+        categorySelect.innerHTML = '<option value="" disabled selected>اختر القسم المناسب...</option>';
+        data.categories.forEach(cat => {
+          const opt = document.createElement('option');
+          opt.value = cat;
+          opt.textContent = cat;
+          categorySelect.appendChild(opt);
+        });
+      } else {
+        categorySelect.innerHTML = '<option value="" disabled selected>لا توجد أقسام في العمود F</option>';
+      }
+    } catch (err) {
+      console.error("خطأ في جلب الأقسام:", err);
+      categorySelect.innerHTML = '<option value="" disabled selected>خطأ في تحميل الأقسام</option>';
+    }
+  }
+
+  function checkLogin() {
+    const pass = document.getElementById('adminPass').value;
+    if (pass === ADMIN_PASSWORD) {
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('adminPanel').style.display = 'block';
+      loadCategories(); // استدعاء الأقسام فور تسجيل الدخول بنجاح
+    } else {
+      document.getElementById('loginError').style.display = 'block';
+    }
+  }
+
+  async function handleImageUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const statusDiv = document.getElementById('uploadStatus');
+    const saveBtn = document.getElementById('saveBtn');
+    const preview = document.getElementById('imgPreview');
+
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = 'block';
+
+    statusDiv.className = 'status-msg loading';
+    statusDiv.textContent = '⏳ جاري رفع الصورة على السيرفر...';
+    statusDiv.style.display = 'block';
+    saveBtn.disabled = true;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+
+    try {
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+
+      if (data.secure_url) {
+        document.getElementById('prodImageUrl').value = data.secure_url;
+        statusDiv.className = 'status-msg success';
+        statusDiv.textContent = '✅ تم رفع الصورة بنجاح!';
+        saveBtn.disabled = false;
+      } else {
+        throw new Error('فشل الرفع');
+      }
+    } catch (error) {
+      statusDiv.className = 'status-msg error';
+      statusDiv.textContent = '❌ حدث خطأ أثناء رفع الصورة. تأكد من بيانات Cloudinary.';
+      saveBtn.disabled = false;
+    }
+  }
+
+  async function saveProduct(event) {
+    event.preventDefault();
+    const imageUrl = document.getElementById('prodImageUrl').value;
+    if (!imageUrl) {
+      alert('يرجى اختيار صورة والانتظار حتى يكتمل رفعها أولاً.');
+      return;
+    }
+
+    const saveBtn = document.getElementById('saveBtn');
+    const formStatus = document.getElementById('formStatus');
+    
+    saveBtn.disabled = true;
+    formStatus.className = 'status-msg loading';
+    formStatus.textContent = '⏳ جاري حفظ المنتج في قاعدة البيانات...';
+    formStatus.style.display = 'block';
+
+    const payload = {
+      action: "add_product",
+      password: ADMIN_PASSWORD,
+      id: document.getElementById('prodId').value.trim(),
+      name: document.getElementById('prodName').value.trim(),
+      category: document.getElementById('prodCategory').value,
+      sizes: document.getElementById('prodSizes').value.trim(),
+      prices: document.getElementById('prodPrices').value.trim(),
+      discount_prices: document.getElementById('prodDiscountPrices').value.trim(),
+      stock: Number(document.getElementById('prodStock').value) || 0,
+      image_url: imageUrl,
+      description: document.getElementById('prodDesc').value.trim()
+    };
+
+    try {
+      await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+
+      formStatus.className = 'status-msg success';
+      formStatus.textContent = '🎉 تم إضافة المنتج بنجاح! سيظهر في المتجر فوراً.';
+      document.getElementById('productForm').reset();
+      document.getElementById('imgPreview').style.display = 'none';
+      document.getElementById('uploadStatus').style.display = 'none';
+      document.getElementById('prodImageUrl').value = '';
+    } catch (err) {
+      formStatus.className = 'status-msg error';
+      formStatus.textContent = '❌ تعذر الاتصال بالسيرفر، حاول مرة أخرى.';
+    } finally {
+      saveBtn.disabled = false;
+    }
+  }
+</script>
+
+</body>
+</html>
