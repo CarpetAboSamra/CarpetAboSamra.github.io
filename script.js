@@ -1,4 +1,6 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbzo9cyGF9knLJ71hpKRcGY9XRmBijDbxY7ZuiQZGhNLaNnBaUvj-_cH-gCKdhXClbxzCA/exec";
+const DEFAULT_WHATSAPP = "201229295567";
+
 let storeSettings = {};
 let allProducts = [];
 let selectedCategory = "ALL";
@@ -10,7 +12,7 @@ function getPriceDetails(product, sizeIdx) {
     : Number((product.prices && product.prices[0]) || 0);
 
   let discPrice = null;
-  if (product.discount_prices && product.discount_prices[sizeIdx] !== undefined && product.discount_prices[sizeIdx] !== null) {
+  if (product.discount_prices && product.discount_prices[sizeIdx] !== undefined && product.discount_prices[sizeIdx] !== null && product.discount_prices[sizeIdx] !== "") {
     const parsed = Number(product.discount_prices[sizeIdx]);
     if (parsed > 0 && parsed < regularPrice) discPrice = parsed;
   }
@@ -38,6 +40,8 @@ async function initStore() {
       populateFilters(allProducts);
       applyFilters();
       updateCartUI();
+    } else {
+      document.getElementById("productsGrid").innerHTML = `<div class="empty-msg">خطأ: ${data.message || "تعذر تحميل البيانات"}</div>`;
     }
   } catch (err) {
     console.error(err);
@@ -48,18 +52,38 @@ async function initStore() {
 function applySettings(settings) {
   const name = settings.store_name || "معرض أبو سمرة كاربت";
   document.title = name;
-  document.getElementById("storeTitle").textContent = name;
+  const titleEl = document.getElementById("storeTitle");
+  if (titleEl) titleEl.textContent = name;
+
   if (settings.logo_image) {
     const logo = document.getElementById("storeLogo");
-    logo.src = settings.logo_image;
-    logo.style.display = "block";
+    if (logo) {
+      logo.src = settings.logo_image;
+      logo.style.display = "block";
+    }
   }
-  if (settings.store_address) document.getElementById("footerAddress").textContent = `📍 العنوان: ${settings.store_address}`;
-  if (settings.store_phone) document.getElementById("footerPhone").textContent = `📞 للاستفسار: ${settings.store_phone}`;
+  if (settings.store_address) {
+    const addrEl = document.getElementById("footerAddress");
+    if (addrEl) addrEl.textContent = `📍 العنوان: ${settings.store_address}`;
+  }
+  if (settings.store_phone) {
+    const phoneEl = document.getElementById("footerPhone");
+    if (phoneEl) phoneEl.textContent = `📞 للاستفسار: ${settings.store_phone}`;
+  }
   if (settings.cover_image) {
     const cover = document.getElementById("coverImage");
-    cover.src = settings.cover_image;
-    cover.style.display = "block";
+    if (cover) {
+      cover.src = settings.cover_image;
+      cover.style.display = "block";
+    }
+  }
+  if (settings.cover_title) {
+    const cTitle = document.getElementById("coverTitle");
+    if (cTitle) cTitle.textContent = settings.cover_title;
+  }
+  if (settings.cover_desc) {
+    const cDesc = document.getElementById("coverDesc");
+    if (cDesc) cDesc.textContent = settings.cover_desc;
   }
 }
 
@@ -115,11 +139,13 @@ function applyFilters() {
   const selectedSize = document.getElementById("sizeFilter").value;
 
   const filtered = allProducts.filter(p => {
-    const matchCat = selectedCategory === "ALL" 
+    const matchCat = selectedCategory === "ALL"
       || (selectedCategory === "DISCOUNTS" && productHasAnyDiscount(p))
       || p.category === selectedCategory;
     const matchSize = selectedSize === "ALL" || (Array.isArray(p.sizes) && p.sizes.includes(selectedSize));
-    const matchText = !searchText || (p.name && p.name.toLowerCase().includes(searchText));
+    const matchText = !searchText
+      || (p.name && p.name.toLowerCase().includes(searchText))
+      || (p.id && String(p.id).toLowerCase().includes(searchText));
     return matchCat && matchSize && matchText;
   });
 
@@ -134,6 +160,7 @@ function renderProducts(products) {
   }
 
   grid.innerHTML = products.map(p => {
+    const inStock = Number(p.stock) > 0;
     const hasAnyDisc = productHasAnyDiscount(p);
     const sizesOptions = (p.sizes && p.sizes.length)
       ? p.sizes.map((s, sIdx) => `<option value="${sIdx}">${s} سم</option>`).join("")
@@ -143,8 +170,9 @@ function renderProducts(products) {
 
     return `
       <div class="product-card" id="card-${p.id}">
-        <div class="image-frame">
+        <div class="image-frame" style="position: relative;">
           <span class="badge-cat">${p.category || "عام"}</span>
+          ${p.id ? `<span class="badge-id" style="position: absolute; bottom: 8px; right: 8px; background: rgba(15, 23, 42, 0.82); color: #fff; font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 6px; z-index: 2; direction: ltr;">${p.id}</span>` : ""}
           ${hasAnyDisc ? `<span class="badge-discount">خصم 🔥</span>` : ""}
           <img src="${p.image || ''}" alt="${p.name}" loading="lazy" />
         </div>
@@ -159,7 +187,9 @@ function renderProducts(products) {
               <span class="old-price" id="old-price-${p.id}" style="${!initialInfo.oldPrice ? 'display:none' : ''}">${initialInfo.oldPrice || ''} ج.م</span>
             </div>
           </div>
-          <button class="add-to-cart-btn" onclick="addProductToCart('${p.id}')">🛒 إضافة للسلة</button>
+          <button class="add-to-cart-btn" ${!inStock ? "disabled" : ""} onclick="addProductToCart('${p.id}')">
+            ${inStock ? "🛒 إضافة للسلة" : "❌ نفذت الكمية"}
+          </button>
         </div>
       </div>
     `;
@@ -257,13 +287,22 @@ function showToast(msg) {
 async function submitOrder(e) {
   e.preventDefault();
   if (!cart.length) return;
-  const name = document.getElementById("custName").value;
-  const phone = document.getElementById("custPhone").value;
-  const address = document.getElementById("custAddress").value;
+  const name = document.getElementById("custName").value.trim();
+  const phone = document.getElementById("custPhone").value.trim();
+  const address = document.getElementById("custAddress").value.trim();
+  const paymentMethod = document.getElementById("paymentMethod") ? document.getElementById("paymentMethod").value : "الدفع عند الاستلام";
   const total = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+  const btn = document.getElementById("submitOrderBtn");
+
+  btn.disabled = true;
+  btn.textContent = "جاري إرسال الطلب...";
 
   const payload = {
-    customer_name: name, phone, address, total,
+    customer_name: name,
+    phone,
+    address,
+    payment_method: paymentMethod,
+    total,
     items: cart.map(i => ({ id: i.id, name: i.name, size: i.size, qty: i.qty, price: i.price, subtotal: i.price * i.qty }))
   };
 
@@ -271,12 +310,32 @@ async function submitOrder(e) {
     const res = await fetch(API_URL, { method: "POST", body: JSON.stringify(payload) });
     const result = await res.json();
     if (result.status === "success") {
+      let waText = `🛒 *طلب جديد - معرض أبو سمرة كاربت*\n`;
+      if (result.order_id) waText += `🔖 *رقم الطلب:* ${result.order_id}\n`;
+      waText += `👤 *الاسم:* ${name}\n📱 *الموبايل:* ${phone}\n📍 *العنوان:* ${address}\n💳 *الدفع:* ${paymentMethod}\n\n📦 *المنتجات:*\n`;
+      cart.forEach((item, idx) => {
+        waText += `${idx + 1}. ${item.name} (${item.size}) × ${item.qty} = ${item.price * item.qty} ج.م\n`;
+      });
+      waText += `\n💰 *الإجمالي:* ${total} ج.م`;
+
+      const rawPhone = storeSettings.store_phone ? storeSettings.store_phone.replace(/\D/g, "") : "";
+      const waPhone = rawPhone ? (rawPhone.startsWith("2") ? rawPhone : `2${rawPhone}`) : DEFAULT_WHATSAPP;
+      window.open(`https://api.whatsapp.com/send?phone=${waPhone}&text=${encodeURIComponent(waText)}`, "_blank");
+
       cart = [];
       saveAndSyncCart();
+      document.getElementById("checkoutForm").reset();
       toggleCart(false);
       showToast("تم إرسال الطلب بنجاح!");
+    } else {
+      alert(result.message || "حدث خطأ أثناء حفظ الطلب.");
     }
   } catch (err) {
     alert("خطأ في الاتصال.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "تأكيد الطلب";
   }
 }
+
+document.addEventListener("DOMContentLoaded", initStore);
