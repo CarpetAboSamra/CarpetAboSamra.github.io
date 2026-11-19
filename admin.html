@@ -555,6 +555,114 @@
     .btn-delete-item:hover {
       background: #fecaca;
     }
+
+    /* نافذة تأكيد الحذف المخصصة */
+    .confirm-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(16, 25, 38, 0.62);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 500;
+    }
+
+    .confirm-modal-backdrop.open {
+      display: flex;
+    }
+
+    .confirm-modal-box {
+      width: 100%;
+      max-width: 420px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-top: 4px solid var(--accent);
+      border-radius: 14px;
+      padding: 24px 22px;
+      box-shadow: 0 14px 34px rgba(16, 25, 38, 0.24);
+      text-align: center;
+    }
+
+    .confirm-modal-icon {
+      width: 50px;
+      height: 50px;
+      margin: 0 auto 12px auto;
+      border-radius: 50%;
+      background: var(--error-bg);
+      color: var(--error-text);
+      border: 1px solid #fecaca;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      font-weight: 800;
+    }
+
+    .confirm-modal-title {
+      margin: 0 0 8px 0;
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: var(--primary);
+    }
+
+    .confirm-modal-desc {
+      margin: 0 0 18px 0;
+      font-size: 0.92rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .confirm-product-highlight {
+      display: inline-block;
+      margin-top: 6px;
+      background: var(--soft-bg);
+      color: var(--primary);
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: 0.9rem;
+    }
+
+    .confirm-modal-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .btn-modal-cancel {
+      background: #f2eee5;
+      color: var(--primary);
+      border: 1.5px solid var(--border);
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 0.92rem;
+      font-weight: 800;
+      cursor: pointer;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .btn-modal-cancel:hover {
+      background: #e9e3d5;
+      border-color: var(--accent);
+    }
+
+    .btn-modal-confirm-delete {
+      background: #b91c1c;
+      color: #ffffff;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 0.92rem;
+      font-weight: 800;
+      cursor: pointer;
+      transition: background-color 0.15s ease;
+    }
+
+    .btn-modal-confirm-delete:hover {
+      background: #991b1b;
+    }
   </style>
 </head>
 <body>
@@ -693,6 +801,23 @@
   </div>
 </div>
 
+<!-- نافذة تأكيد الحذف المخصصة -->
+<div class="confirm-modal-backdrop" id="deleteConfirmModal" onclick="closeDeleteModalOnBackdrop(event)">
+  <div class="confirm-modal-box" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
+    <div class="confirm-modal-icon">🗑️</div>
+    <h4 class="confirm-modal-title" id="confirmModalTitle">تأكيد حذف الصنف</h4>
+    <p class="confirm-modal-desc">
+      هل أنت متأكد من حذف هذا الصنف نهائياً من قاعدة البيانات؟ لا يمكن التراجع عن هذا الإجراء.
+      <br>
+      <span class="confirm-product-highlight" id="deleteTargetLabel">-</span>
+    </p>
+    <div class="confirm-modal-actions">
+      <button type="button" class="btn-modal-cancel" onclick="closeDeleteModal()">إلغاء</button>
+      <button type="button" class="btn-modal-confirm-delete" id="confirmDeleteActionBtn" onclick="executeConfirmedDelete()">نعم، احذف الصنف</button>
+    </div>
+  </div>
+</div>
+
 <script>
   const ADMIN_PASSWORD = "1981";
   const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzo9cyGF9knLJ71hpKRcGY9XRmBijDbxY7ZuiQZGhNLaNnBaUvj-_cH-gCKdhXClbxzCA/exec";
@@ -702,6 +827,7 @@
   let verifiedPassword = "";
   let availableSizes = ["160x220", "200x280"];
   let sheetProducts = [];
+  let pendingDeleteProduct = null;
 
   function showQuickMsg(elId, type, text) {
     const el = document.getElementById(elId);
@@ -951,10 +1077,37 @@
     document.getElementById('prodImageUrl').value = "";
   }
 
-  async function deleteProduct(prodId, prodName) {
-    const confirmed = confirm(`هل أنت متأكد من حذف الصنف "${prodName || prodId}" (كود: ${prodId}) نهائياً؟`);
-    if (!confirmed) return;
+  function openDeleteModal(prodId, prodName) {
+    pendingDeleteProduct = { id: prodId, name: prodName };
+    document.getElementById('deleteTargetLabel').textContent = `${prodName || 'بدون اسم'} (${prodId})`;
+    document.getElementById('deleteConfirmModal').classList.add('open');
+  }
 
+  function closeDeleteModal() {
+    pendingDeleteProduct = null;
+    document.getElementById('deleteConfirmModal').classList.remove('open');
+  }
+
+  function closeDeleteModalOnBackdrop(event) {
+    if (event.target === event.currentTarget) {
+      closeDeleteModal();
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('deleteConfirmModal').classList.contains('open')) {
+      closeDeleteModal();
+    }
+  });
+
+  async function executeConfirmedDelete() {
+    if (!pendingDeleteProduct) return;
+    const { id: prodId } = pendingDeleteProduct;
+    const confirmBtn = document.getElementById('confirmDeleteActionBtn');
+
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = "جاري الحذف...";
+    closeDeleteModal();
     showManageStatus('loading', `⏳ جاري حذف الصنف (${prodId})...`);
 
     try {
@@ -979,6 +1132,9 @@
       }
     } catch (err) {
       showManageStatus('error', '❌ تعذر الاتصال بالسيرفر أثناء الحذف.');
+    } finally {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "نعم، احذف الصنف";
     }
   }
 
@@ -1025,7 +1181,7 @@
           </div>
           <div class="manage-actions">
             <button type="button" class="btn-edit-item" onclick="startEditProduct('${safeId}')">✏️ تعديل</button>
-            <button type="button" class="btn-delete-item" onclick="deleteProduct('${safeId}', '${safeName}')">🗑️ حذف</button>
+            <button type="button" class="btn-delete-item" onclick="openDeleteModal('${safeId}', '${safeName}')">🗑️ حذف</button>
           </div>
         </div>
       `;
